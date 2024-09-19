@@ -296,6 +296,20 @@ public class MembersController {
 		model.addAttribute("member", member);
 		return "member/getMember";
 	}
+	
+	//簽到用ajax
+	@ResponseBody
+	@PostMapping("/member/daily/checkIn")
+	public Integer dailyCheckIn(HttpSession httpSession) {
+		Members member = (Members) httpSession.getAttribute("member");
+		Integer memberId = member.getMemberId();
+		boolean signInStatus = membersService.dailyCheckIn(memberId);
+		if(signInStatus) {
+			Integer consecutiveCheckIns = membersService.getConsecutiveCheckIns(memberId);
+			return consecutiveCheckIns;
+		}
+		return 0;
+	}
 
 	@GetMapping("/member/download")
 	public ResponseEntity<byte[]> downloadPhotos(@RequestParam Integer memberId) {

@@ -1,9 +1,12 @@
 package com.pet.service.member;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
+import org.hibernate.annotations.Check;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -11,15 +14,19 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.pet.config.redis.JedisConnectionFactory;
 import com.pet.model.member.Members;
 import com.pet.repository.member.MembersRepository;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import redis.clients.jedis.Jedis;
 
 @Service
 public class MembersService {
-
+	//用戶登入前贅詞
+	private static final String CHECK_IN_KEY_PREFIX = "checkin:";
+	
 	@Autowired
 	private MembersRepository membersRepo;
 
@@ -29,6 +36,56 @@ public class MembersService {
 	@Autowired
 	private JavaMailSender mailSender; // 注入郵件發送器
 
+	
+	//每日簽到
+	public boolean dailyCheckIn(Integer memberId) {
+		try (Jedis jedis = JedisConnectionFactory.getJedis()) {
+            String key = CHECK_IN_KEY_PREFIX + memberId;
+            long offset = getCurrentDayOffset();
+            
+            // 檢查用戶是否已經簽到
+            if (jedis.getbit(key, offset)) {
+                return false; // 用戶已經簽到
+            }
+            
+            // 設置簽到標記
+            jedis.setbit(key, offset, true);
+            return true;
+        }
+	}
+	
+	//判斷是否簽到
+	public boolean hasCheckedIn(String memberId) {
+        try (Jedis jedis = JedisConnectionFactory.getJedis()) {
+            String key = CHECK_IN_KEY_PREFIX + memberId;
+            long offset = getCurrentDayOffset();
+            return jedis.getbit(key, offset);
+        }
+    }
+
+	//計算連續簽到天數
+    public Integer getConsecutiveCheckIns(Integer memberId) {
+        try (Jedis jedis = JedisConnectionFactory.getJedis()) {
+            String key = CHECK_IN_KEY_PREFIX + memberId;
+            long offset = getCurrentDayOffset();
+            Integer consecutive = 0;
+
+            while (offset >= 0 && jedis.getbit(key, offset)) {
+                consecutive++;
+                offset--;
+            }
+
+            return consecutive;
+        }
+    }
+
+    //取得當前日期
+    private long getCurrentDayOffset() {
+        return LocalDate.now(ZoneId.systemDefault()).toEpochDay();
+    }
+	
+	
+	
 	public void deleteMember(Integer memberId) {
 		membersRepo.deleteById(memberId);
 	}
